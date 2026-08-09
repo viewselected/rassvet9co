@@ -20,6 +20,7 @@ var sub_time := 0.0
 var interactables := []
 var triggers := []
 var started := false
+var resume_cd := 0.0
 
 const SND := {
 	"pm": preload("res://assets/sfx/pm.wav"),
@@ -157,7 +158,7 @@ func room(cx: float, cz: float, w: float, d: float, h: float, o := {}) -> void:
 					add_box(Vector3(wx, h / 2, cz + length / 2 - seg_b / 2), Vector3(t, h, seg_b), wall)
 				add_box(Vector3(wx, oh + (h - oh) / 2, cz - length / 2 + seg_a + ow / 2), Vector3(t, h - oh, ow), wall)
 
-func fluor(pos: Vector3, len_ := 2.0, axis := "x", flick := 0.0, energy := 2.4) -> void:
+func fluor(pos: Vector3, len_ := 2.0, axis := "x", flick := 0.0, energy := 2.4, shadows := false) -> void:
 	var tube := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(len_ if axis == "x" else 0.14, 0.07, len_ if axis == "z" else 0.14)
@@ -174,7 +175,7 @@ func fluor(pos: Vector3, len_ := 2.0, axis := "x", flick := 0.0, energy := 2.4) 
 	l.light_color = Color(0.85, 0.89, 0.8)
 	l.light_energy = energy
 	l.omni_range = 13
-	l.shadow_enabled = true
+	l.shadow_enabled = shadows
 	add_child(l)
 	l.global_position = pos + Vector3(0, -0.35, 0)
 	if flick > 0:
@@ -197,7 +198,7 @@ func red_lamp(pos: Vector3, energy := 1.6) -> void:
 	l.light_color = Color(0.8, 0.28, 0.22)
 	l.light_energy = energy
 	l.omni_range = 10
-	l.shadow_enabled = true
+	l.shadow_enabled = false
 	add_child(l)
 	l.global_position = pos
 
@@ -358,28 +359,33 @@ func _make_hud() -> void:
 	cross.color = Color(0.85, 0.83, 0.77, 0.8)
 	cross.size = Vector2(4, 4)
 	cross.position = Vector2(478, 268)
+	cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(cross)
 
 	hp_label = Label.new()
 	hp_label.position = Vector2(16, 500)
 	hp_label.add_theme_color_override("font_color", font_col)
+	hp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(hp_label)
 
 	ammo_label = Label.new()
 	ammo_label.position = Vector2(840, 490)
 	ammo_label.add_theme_font_size_override("font_size", 22)
 	ammo_label.add_theme_color_override("font_color", font_col)
+	ammo_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(ammo_label)
 
 	objective_label = Label.new()
 	objective_label.position = Vector2(16, 12)
 	objective_label.add_theme_color_override("font_color", Color(0.6, 0.63, 0.6))
+	objective_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(objective_label)
 
 	interact_label = Label.new()
 	interact_label.position = Vector2(400, 300)
 	interact_label.add_theme_color_override("font_color", font_col)
 	interact_label.visible = false
+	interact_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(interact_label)
 
 	subtitle_label = RichTextLabel.new()
@@ -388,6 +394,7 @@ func _make_hud() -> void:
 	subtitle_label.size = Vector2(640, 80)
 	subtitle_label.add_theme_font_size_override("normal_font_size", 16)
 	subtitle_label.visible = false
+	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(subtitle_label)
 
 	paper_panel = PanelContainer.new()
@@ -431,8 +438,8 @@ func _make_hud() -> void:
 	pause_panel.size = Vector2(960, 540)
 	pause_panel.visible = false
 	var pl := Label.new()
-	pl.text = "СВЯЗЬ ПРИОСТАНОВЛЕНА"
-	pl.position = Vector2(360, 210)
+	pl.text = "СВЯЗЬ ПРИОСТАНОВЛЕНА · КЛИКНИ ЧТОБЫ ПРОДОЛЖИТЬ"
+	pl.position = Vector2(240, 230)
 	pl.add_theme_font_size_override("font_size", 24)
 	pl.add_theme_color_override("font_color", Color(0.7, 0.72, 0.66))
 	pause_panel.add_child(pl)
@@ -462,7 +469,7 @@ func _make_hud() -> void:
 	ms.add_theme_color_override("font_color", Color(0.45, 0.48, 0.45))
 	menu_panel.add_child(ms)
 	var mb := Button.new()
-	mb.text = "СПУСТИТЬСЯ"
+	mb.text = "СПУСТИТЬСЯ (или кликни)"
 	mb.position = Vector2(424, 300)
 	mb.focus_mode = Control.FOCUS_NONE
 	mb.pressed.connect(_start_game)
@@ -486,7 +493,7 @@ func toast(text: String) -> void:
 	say("", text, 2.2)
 
 func show_paper(text: String) -> void:
-	paper_label.text = text + "\n\n[E] — убрать документ"
+	paper_label.text = text + "\n\n[E] или клик — убрать документ"
 	paper_panel.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -520,9 +527,13 @@ func _process(delta: float) -> void:
 		subtitle_label.text = "[center]" + head + s.text + "[/center]"
 		subtitle_label.visible = true
 		sub_time = s.dur
+	resume_cd = max(0.0, resume_cd - delta)
+	if paper_open() and Input.is_action_just_pressed("interact"):
+		hide_paper()
+		resume_cd = 0.2
 	if player == null or not started:
 		return
-	if started and not player.dead and not paper_open() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not pause_panel.visible and not menu_panel.visible:
+	if started and not player.dead and not death_panel.visible and not paper_open() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not pause_panel.visible and not menu_panel.visible:
 		pause_panel.visible = true
 	# предметы
 	var items: Array = get_meta("items", [])
@@ -558,9 +569,25 @@ func _process(delta: float) -> void:
 		interact_label.visible = false
 	player.interact_target = best
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	# мышиные события на вебе доходят всегда — вся навигация UI живёт на них
+	if event is InputEventMouseButton and event.pressed:
+		if menu_panel.visible:
+			_start_game()
+			resume_cd = 0.25
+			get_viewport().set_input_as_handled()
+		elif pause_panel != null and pause_panel.visible:
+			pause_panel.visible = false
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			resume_cd = 0.25
+			get_viewport().set_input_as_handled()
+		elif paper_open():
+			hide_paper()
+			resume_cd = 0.25
+			get_viewport().set_input_as_handled()
 	if event.is_action_pressed("interact") and paper_open():
 		hide_paper()
+		resume_cd = 0.2
 		get_viewport().set_input_as_handled()
 
 # ---------- игрок и враги ----------
@@ -591,7 +618,7 @@ func spawn_crawler(pos: Vector3) -> void:
 func _build_level() -> void:
 	# спавн-комната
 	room(0, 6, 8, 8, 3.4, {"n": {"w": 2.4, "h": 2.8}, "wall": "metal", "floor": "floor"})
-	fluor(Vector3(0, 3.15, 6), 2.0, "x")
+	fluor(Vector3(0, 3.15, 6), 2.0, "x", 0.0, 2.4, true)
 	sign_plate(Vector3(0, 2.5, 9.7), "ГОРИЗОНТ 3 · ЦЕХА", PI)
 	label3d(Vector3(-3.5, 1.5, 9.55), "ТУТ БЫЛ СЛАВИК", PI, 30, Color(0.35, 0.48, 0.62))
 
@@ -606,10 +633,10 @@ func _build_level() -> void:
 
 	# цех
 	room(0, -19, 22, 18, 5.2, {"s": {"w": 2.8, "h": 2.7}, "n": {"w": 2.4, "h": 2.8}, "wall": "concrete", "floor": "floor"})
-	fluor(Vector3(-6, 4.9, -15), 2.6, "x", 0.0, 2.6)
+	fluor(Vector3(-6, 4.9, -15), 2.6, "x", 0.0, 2.6, true)
 	fluor(Vector3(6, 4.9, -15), 2.6, "x", 5.0, 2.6)
 	fluor(Vector3(-6, 4.9, -24), 2.6, "x", 9.0, 2.6)
-	fluor(Vector3(6, 4.9, -24), 2.6, "x", 0.0, 2.6)
+	fluor(Vector3(6, 4.9, -24), 2.6, "x", 0.0, 2.6, true)
 	machine(-6, -14)
 	machine(-6, -22)
 	machine(6, -14)

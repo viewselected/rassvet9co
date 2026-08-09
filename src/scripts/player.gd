@@ -295,7 +295,7 @@ func _physics_process(delta: float) -> void:
 			step_t = 0.42
 
 	fire_t -= delta
-	if Input.is_action_pressed("fire") and fire_t <= 0 and reload_t <= 0:
+	if Input.is_action_pressed("fire") and fire_t <= 0 and reload_t <= 0 and main.resume_cd <= 0:
 		if is_auto[weapon] or Input.is_action_just_pressed("fire"):
 			_fire()
 	if reload_t > 0:
