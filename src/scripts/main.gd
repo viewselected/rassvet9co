@@ -11,6 +11,7 @@ var paper_panel: PanelContainer
 var paper_label: Label
 var death_panel: ColorRect
 var menu_panel: ColorRect
+var pause_panel: ColorRect
 var hp_label: Label
 var ammo_label: Label
 var flicker_lights := []
@@ -248,6 +249,45 @@ func sign_plate(pos: Vector3, text: String, ry: float, w := 2.2) -> void:
 func crate(x: float, z: float, s := 1.3) -> void:
 	add_box(Vector3(x, s / 2, z), Vector3(s, s, s), "wood")
 
+func barrel_dyn(x: float, z: float) -> void:
+	var rb := RigidBody3D.new()
+	rb.mass = 14
+	rb.linear_damp = 0.4
+	rb.angular_damp = 0.6
+	var cs := CollisionShape3D.new()
+	var sh := CylinderShape3D.new()
+	sh.radius = 0.42
+	sh.height = 1.15
+	cs.shape = sh
+	rb.add_child(cs)
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.42
+	cm.bottom_radius = 0.42
+	cm.height = 1.15
+	mi.mesh = cm
+	mi.material_override = mats["rust"]
+	rb.add_child(mi)
+	add_child(rb)
+	rb.global_position = Vector3(x, 0.7, z)
+
+func crate_dyn(x: float, z: float, s := 0.9) -> void:
+	var rb := RigidBody3D.new()
+	rb.mass = 8
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(s, s, s)
+	cs.shape = sh
+	rb.add_child(cs)
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(s, s, s)
+	mi.mesh = bm
+	mi.material_override = mats["wood"]
+	rb.add_child(mi)
+	add_child(rb)
+	rb.global_position = Vector3(x, s / 2 + 0.3, z)
+
 func barrel(x: float, z: float) -> void:
 	var mi := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
@@ -274,11 +314,13 @@ func machine(x: float, z: float) -> void:
 func item(pos: Vector3, type: String, amount := 0) -> void:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.34, 0.22, 0.34) if type != "ak" else Vector3(0.16, 0.2, 0.9)
+	bm.size = Vector3(0.16, 0.2, 0.9) if type in ["ak", "mosin", "sg"] else Vector3(0.34, 0.22, 0.34)
 	mi.mesh = bm
 	var m := StandardMaterial3D.new()
 	var cols := {"medkit": Color(0.7, 0.2, 0.16), "ammo_pm": Color(0.55, 0.55, 0.35),
-		"ammo_ak": Color(0.6, 0.48, 0.22), "ak": Color(0.35, 0.27, 0.18)}
+		"ammo_ak": Color(0.6, 0.48, 0.22), "ak": Color(0.35, 0.27, 0.18),
+		"sg": Color(0.3, 0.24, 0.16), "ammo_sg": Color(0.5, 0.38, 0.2),
+		"mosin": Color(0.42, 0.3, 0.16), "ammo_mosin": Color(0.45, 0.42, 0.3)}
 	m.albedo_color = cols.get(type, Color.GRAY)
 	m.emission_enabled = true
 	m.emission = m.albedo_color
@@ -349,12 +391,13 @@ func _make_hud() -> void:
 	hud.add_child(subtitle_label)
 
 	paper_panel = PanelContainer.new()
-	paper_panel.position = Vector2(230, 90)
-	paper_panel.size = Vector2(500, 360)
+	paper_panel.position = Vector2(180, 60)
+	paper_panel.size = Vector2(600, 420)
 	paper_panel.visible = false
 	paper_label = Label.new()
 	paper_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	paper_label.add_theme_color_override("font_color", Color(0.14, 0.13, 0.1))
+	paper_label.add_theme_font_size_override("font_size", 19)
+	paper_label.add_theme_color_override("font_color", Color(0.13, 0.12, 0.09))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.81, 0.79, 0.71)
 	sb.content_margin_left = 30
@@ -378,9 +421,31 @@ func _make_hud() -> void:
 	var db := Button.new()
 	db.text = "ПОДНЯТЬСЯ"
 	db.position = Vector2(430, 280)
+	db.focus_mode = Control.FOCUS_NONE
 	db.pressed.connect(func(): get_tree().reload_current_scene())
 	death_panel.add_child(db)
 	hud.add_child(death_panel)
+
+	pause_panel = ColorRect.new()
+	pause_panel.color = Color(0.02, 0.025, 0.03, 0.85)
+	pause_panel.size = Vector2(960, 540)
+	pause_panel.visible = false
+	var pl := Label.new()
+	pl.text = "СВЯЗЬ ПРИОСТАНОВЛЕНА"
+	pl.position = Vector2(360, 210)
+	pl.add_theme_font_size_override("font_size", 24)
+	pl.add_theme_color_override("font_color", Color(0.7, 0.72, 0.66))
+	pause_panel.add_child(pl)
+	var pb := Button.new()
+	pb.text = "ПРОДОЛЖИТЬ"
+	pb.position = Vector2(424, 270)
+	pb.focus_mode = Control.FOCUS_NONE
+	pb.pressed.connect(func():
+		pause_panel.visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	)
+	pause_panel.add_child(pb)
+	hud.add_child(pause_panel)
 
 	menu_panel = ColorRect.new()
 	menu_panel.color = Color(0.03, 0.035, 0.045, 1.0)
@@ -399,6 +464,7 @@ func _make_hud() -> void:
 	var mb := Button.new()
 	mb.text = "СПУСТИТЬСЯ"
 	mb.position = Vector2(424, 300)
+	mb.focus_mode = Control.FOCUS_NONE
 	mb.pressed.connect(_start_game)
 	menu_panel.add_child(mb)
 	hud.add_child(menu_panel)
@@ -456,6 +522,8 @@ func _process(delta: float) -> void:
 		sub_time = s.dur
 	if player == null or not started:
 		return
+	if started and not player.dead and not paper_open() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not pause_panel.visible and not menu_panel.visible:
+		pause_panel.visible = true
 	# предметы
 	var items: Array = get_meta("items", [])
 	for it in items:
@@ -534,6 +602,7 @@ func _build_level() -> void:
 	pipe(Vector3(1.95, 2.5, 3), Vector3(1.95, 2.5, -9))
 	pipe(Vector3(1.8, 2.3, 3), Vector3(1.8, 2.3, -9))
 	label3d(Vector3(-2.35, 1.4, -5), "НОРМУ В ЖОПУ", PI / 2, 40, Color(0.62, 0.2, 0.16))
+	label3d(Vector3(2.35, 1.9, -1), "МАРМОН-ПИДОР", -PI / 2, 34, Color(0.2, 0.28, 0.36))
 
 	# цех
 	room(0, -19, 22, 18, 5.2, {"s": {"w": 2.8, "h": 2.7}, "n": {"w": 2.4, "h": 2.8}, "wall": "concrete", "floor": "floor"})
@@ -549,14 +618,22 @@ func _build_level() -> void:
 	crate(-1.5, -13)
 	crate(-0.7, -12)
 	crate(3, -25)
-	barrel(9.5, -26)
-	barrel(10.2, -25)
+	barrel_dyn(9.5, -26)
+	barrel_dyn(10.2, -25)
+	barrel_dyn(8.8, -24.6)
+	crate_dyn(-3, -20)
+	crate_dyn(-2.4, -19.2)
 	sign_plate(Vector3(0, 4.4, -27.7), "ЦЕХ СБОРКИ №1", 0, 3.2)
 	label3d(Vector3(-10.7, 2.0, -19), "ХУЙ", PI / 2, 84, Color(0.72, 0.24, 0.2), 12)
 	label3d(Vector3(10.7, 1.7, -21), "ОНИ В СТЕНАХ", -PI / 2, 38, Color(0.16, 0.22, 0.28))
+	label3d(Vector3(6.2, 2.6, -27.7), "МАРМОН-ПИДОР", 0, 30, Color(0.6, 0.22, 0.18))
 	item(Vector3(2, 0.45, -17), "ak")
 	item(Vector3(3, 0.45, -17.6), "ammo_ak", 30)
 	item(Vector3(-6, 2.6, -22), "medkit", 30)
+	item(Vector3(9.8, 0.45, -13), "sg")
+	item(Vector3(10.4, 0.45, -13.8), "ammo_sg", 8)
+	item(Vector3(-8.5, 0.45, -25.5), "mosin")
+	item(Vector3(-9.2, 0.45, -25), "ammo_mosin", 10)
 	note(Vector3(1.2, 0.5, -17.8), "Рапорт. Пост 2-Б.\nОни приходят на свет и на звук. Если лампа мигает —\nне стой под ней. Гаси фонарь, когда слышишь шаги.\nАвтомат забери. Мне уже не надо.")
 	red_lamp(Vector3(0, 4.8, -27), 1.4)
 
@@ -576,6 +653,11 @@ func _build_level() -> void:
 		snd("creature", Vector3(0, 1, -26))
 	)
 	trigger(Vector3(0, 1.5, -33.5), Vector3(4, 3, 3), func():
-		say("РАЦИЯ · НЕИЗВЕСТНЫЙ", "Дальше опечатано до следующей сборки. Но ты уже понял, каким это будет. Возвращайся.", 8.0)
-		set_objective("срез пройден — жди следующую сборку")
+		say("РАЦИЯ · НЕИЗВЕСТНЫЙ", "Дальше опечатано до следующей сборки. Но ты уже понял, каким это будет.", 6.0)
+		set_objective("срез пройден")
+		get_tree().create_timer(6.0).timeout.connect(func():
+			started = false
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			menu_panel.visible = true
+		)
 	)

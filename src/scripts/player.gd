@@ -13,14 +13,17 @@ var hp := 100.0
 var god := false
 var dead := false
 var weapon := "pm"
-var have := {"pm": true, "ak": false}
-var clip := {"pm": 8, "ak": 0}
-var clip_size := {"pm": 8, "ak": 30}
-var ammo := {"pm": 24, "ak": 0}
-var fire_rate := {"pm": 0.22, "ak": 0.1}
-var is_auto := {"pm": false, "ak": true}
-var dmg := {"pm": 25.0, "ak": 14.0}
-var spread := {"pm": 0.012, "ak": 0.028}
+var have := {"pm": true, "ak": false, "sg": false, "mosin": false}
+var clip := {"pm": 8, "ak": 0, "sg": 0, "mosin": 0}
+var clip_size := {"pm": 8, "ak": 30, "sg": 2, "mosin": 5}
+var ammo := {"pm": 24, "ak": 0, "sg": 0, "mosin": 0}
+var fire_rate := {"pm": 0.22, "ak": 0.1, "sg": 0.7, "mosin": 1.3}
+var is_auto := {"pm": false, "ak": true, "sg": false, "mosin": false}
+var dmg := {"pm": 25.0, "ak": 14.0, "sg": 13.0, "mosin": 85.0}
+var spread := {"pm": 0.012, "ak": 0.028, "sg": 0.07, "mosin": 0.004}
+var pellets := {"pm": 1, "ak": 1, "sg": 7, "mosin": 1}
+var kickback := {"pm": 0.02, "ak": 0.012, "sg": 0.06, "mosin": 0.05}
+var roll := 0.0
 var fire_t := 0.0
 var reload_t := 0.0
 var recoil := 0.0
@@ -128,25 +131,72 @@ func _build_viewmodels() -> void:
 	ak_g.visible = false
 	vm["ak"] = ak_g
 
+	var sg_g := Node3D.new()
+	sg_g.position = Vector3(0.24, -0.26, -0.48)
+	var dm := StandardMaterial3D.new()
+	dm.albedo_color = Color(0.15, 0.16, 0.17)
+	for bx in [-0.024, 0.024]:
+		var bb := MeshInstance3D.new()
+		var bc := CylinderMesh.new()
+		bc.top_radius = 0.022
+		bc.bottom_radius = 0.022
+		bc.height = 0.48
+		bb.mesh = bc
+		bb.material_override = dm
+		bb.rotation.x = PI / 2
+		bb.position = Vector3(bx, 0, -0.1)
+		sg_g.add_child(bb)
+	var stock := MeshInstance3D.new()
+	var stb := BoxMesh.new()
+	stb.size = Vector3(0.07, 0.09, 0.2)
+	stock.mesh = stb
+	var stm := StandardMaterial3D.new()
+	stm.albedo_color = Color(0.32, 0.24, 0.15)
+	stock.material_override = stm
+	stock.position = Vector3(0, -0.03, 0.24)
+	sg_g.add_child(stock)
+	cam.add_child(sg_g)
+	sg_g.visible = false
+	vm["sg"] = sg_g
+
+	var mo_g := Node3D.new()
+	mo_g.position = Vector3(0.22, -0.24, -0.4)
+	var wood_m := StandardMaterial3D.new()
+	wood_m.albedo_color = Color(0.4, 0.28, 0.16)
+	var stock2 := MeshInstance3D.new()
+	var stb2 := BoxMesh.new()
+	stb2.size = Vector3(0.06, 0.09, 0.85)
+	stock2.mesh = stb2
+	stock2.material_override = wood_m
+	stock2.position = Vector3(0, -0.01, -0.1)
+	mo_g.add_child(stock2)
+	var mb := MeshInstance3D.new()
+	var mc := CylinderMesh.new()
+	mc.top_radius = 0.014
+	mc.bottom_radius = 0.014
+	mc.height = 0.5
+	mb.mesh = mc
+	mb.material_override = dm
+	mb.rotation.x = PI / 2
+	mb.position = Vector3(0, 0.035, -0.5)
+	mo_g.add_child(mb)
+	var bolt := MeshInstance3D.new()
+	var bob := BoxMesh.new()
+	bob.size = Vector3(0.1, 0.03, 0.03)
+	bolt.mesh = bob
+	bolt.material_override = dm
+	bolt.position = Vector3(0.06, 0.05, 0.12)
+	mo_g.add_child(bolt)
+	cam.add_child(mo_g)
+	mo_g.visible = false
+	vm["mosin"] = mo_g
+
 func _unhandled_input(event: InputEvent) -> void:
 	if dead or main.paper_open() or not main.started:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotation.y -= event.relative.x * 0.0021
 		head.rotation.x = clamp(head.rotation.x - event.relative.y * 0.0021, -1.5, 1.5)
-	if event.is_action_pressed("interact") and interact_target != null:
-		interact_target.cb.call()
-	if event.is_action_pressed("flash"):
-		flash.light_energy = 3.0 if flash.light_energy == 0.0 else 0.0
-	if event.is_action_pressed("reload"):
-		_start_reload()
-	if event.is_action_pressed("godmode"):
-		god = not god
-		main.toast("режим наблюдателя: " + ("ВКЛ" if god else "ВЫКЛ"))
-	if event.is_action_pressed("weapon1"):
-		_switch("pm")
-	if event.is_action_pressed("weapon2"):
-		_switch("ak")
 
 func _switch(w: String) -> void:
 	if not have[w] or reload_t > 0:
@@ -172,6 +222,22 @@ func give(type: String, amount: int) -> void:
 			clip["ak"] = 30
 			_switch("ak")
 			main.toast("АКС-74У")
+		"sg":
+			have["sg"] = true
+			clip["sg"] = 2
+			_switch("sg")
+			main.toast("обрез")
+		"mosin":
+			have["mosin"] = true
+			clip["mosin"] = 5
+			_switch("mosin")
+			main.toast("винтовка Мосина")
+		"ammo_sg":
+			ammo["sg"] += amount
+			main.toast("12 калибр +%d" % amount)
+		"ammo_mosin":
+			ammo["mosin"] += amount
+			main.toast("7,62 +%d" % amount)
 	_update_hud()
 
 func _physics_process(delta: float) -> void:
@@ -179,6 +245,24 @@ func _physics_process(delta: float) -> void:
 		return
 	if main.paper_open():
 		return
+	# клавиши опросом — на вебе события иногда съедает фокус UI
+	if Input.is_action_just_pressed("interact") and interact_target != null:
+		interact_target.cb.call()
+	if Input.is_action_just_pressed("flash"):
+		flash.light_energy = 3.0 if flash.light_energy == 0.0 else 0.0
+	if Input.is_action_just_pressed("reload"):
+		_start_reload()
+	if Input.is_action_just_pressed("godmode"):
+		god = not god
+		main.toast("режим наблюдателя: " + ("ВКЛ" if god else "ВЫКЛ"))
+	if Input.is_action_just_pressed("weapon1"):
+		_switch("pm")
+	if Input.is_action_just_pressed("weapon2"):
+		_switch("ak")
+	if Input.is_action_just_pressed("weapon3"):
+		_switch("sg")
+	if Input.is_action_just_pressed("weapon4"):
+		_switch("mosin")
 	var dir := Vector3.ZERO
 	var fwd := -global_transform.basis.z
 	var right := global_transform.basis.x
@@ -193,8 +277,12 @@ func _physics_process(delta: float) -> void:
 	dir.y = 0
 	dir = dir.normalized()
 	var speed := 7.2 if Input.is_action_pressed("sprint") else 4.4
-	velocity.x = dir.x * speed
-	velocity.z = dir.z * speed
+	var accel := 12.0 if is_on_floor() else 3.5
+	velocity.x = lerp(velocity.x, dir.x * speed, accel * delta)
+	velocity.z = lerp(velocity.z, dir.z * speed, accel * delta)
+	var strafe := dir.dot(global_transform.basis.x)
+	roll = lerp(roll, -strafe * 0.022, 8 * delta)
+	cam.rotation.z = roll
 	velocity.y -= 22 * delta
 	if Input.is_action_pressed("jump") and is_on_floor():
 		velocity.y = 7.2
@@ -221,10 +309,11 @@ func _physics_process(delta: float) -> void:
 	recoil = max(0.0, recoil - delta * 4)
 	vm[weapon].position.z = -0.45 + recoil * 0.07
 	vm[weapon].rotation.x = recoil * 0.18
+	var base_y: float = {"pm": -0.24, "ak": -0.25, "sg": -0.26, "mosin": -0.24}[weapon]
 	if reload_t > 0:
-		vm[weapon].position.y = -0.25 - 0.14 * sin(min(1.0, reload_t) * PI)
+		vm[weapon].position.y = base_y - 0.14 * sin(min(1.0, reload_t) * PI)
 	else:
-		vm[weapon].position.y = -0.24 if weapon == "pm" else -0.25
+		vm[weapon].position.y = base_y
 
 func _fire() -> void:
 	if clip[weapon] <= 0:
@@ -233,29 +322,32 @@ func _fire() -> void:
 	clip[weapon] -= 1
 	fire_t = fire_rate[weapon]
 	recoil = 1.0
-	head.rotation.x += 0.012 if weapon == "ak" else 0.02
-	main.snd(weapon)
+	head.rotation.x += kickback[weapon]
+	main.snd("pm" if weapon == "sg" or weapon == "mosin" else weapon, Vector3.INF, 3.0 if weapon == "mosin" else 0.0)
 	muzzle_light.light_energy = 4.0
 	get_tree().create_timer(0.05).timeout.connect(func(): muzzle_light.light_energy = 0.0)
 
-	var from := cam.global_position
-	var f := -cam.global_transform.basis.z
-	f += cam.global_transform.basis.x * randf_range(-1, 1) * spread[weapon] * (1 + recoil)
-	f += cam.global_transform.basis.y * randf_range(-1, 1) * spread[weapon] * (1 + recoil)
-	f = f.normalized()
-	var to := from + f * 90
-	var q := PhysicsRayQueryParameters3D.create(from, to, 0xFFFFFFFF, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	var end := to
-	if hit:
-		end = hit.position
-		var col = hit.collider
-		var enemy = col if col.is_in_group("enemies") else (col.get_parent() if col.get_parent() and col.get_parent().is_in_group("enemies") else null)
-		if enemy != null:
-			enemy.take_damage(dmg[weapon])
-			main.snd("hit")
-		_impact(end, hit.get("normal", Vector3.UP))
-	_tracer(from + f * 0.9, end)
+	for i in range(pellets[weapon]):
+		var from := cam.global_position
+		var f := -cam.global_transform.basis.z
+		f += cam.global_transform.basis.x * randf_range(-1, 1) * spread[weapon] * (1 + recoil)
+		f += cam.global_transform.basis.y * randf_range(-1, 1) * spread[weapon] * (1 + recoil)
+		f = f.normalized()
+		var to := from + f * 90
+		var q := PhysicsRayQueryParameters3D.create(from, to, 0xFFFFFFFF, [get_rid()])
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		var end := to
+		if hit:
+			end = hit.position
+			var col = hit.collider
+			var enemy = col if col.is_in_group("enemies") else (col.get_parent() if col.get_parent() and col.get_parent().is_in_group("enemies") else null)
+			if enemy != null:
+				enemy.take_damage(dmg[weapon], f * (2.5 if weapon == "mosin" else 0.8))
+				main.snd("hit")
+			elif col is RigidBody3D:
+				col.apply_impulse(f * (14.0 if weapon == "mosin" else 5.0), end - col.global_position)
+			_impact(end, hit.get("normal", Vector3.UP))
+		_tracer(from + f * 0.9, end)
 	_update_hud()
 
 func _start_reload() -> void:
@@ -263,7 +355,7 @@ func _start_reload() -> void:
 		if ammo[weapon] <= 0 and clip[weapon] <= 0:
 			main.toast("нет патронов")
 		return
-	reload_t = 1.6 if weapon == "ak" else 1.1
+	reload_t = float({"pm": 1.1, "ak": 1.6, "sg": 1.9, "mosin": 2.3}[weapon])
 	main.snd("reload")
 
 func _tracer(a: Vector3, b: Vector3) -> void:
@@ -320,5 +412,5 @@ func _update_hud() -> void:
 	if main == null or main.hp_label == null:
 		return
 	main.hp_label.text = "ЗДР %d" % int(hp)
-	var names := {"pm": "ПМ", "ak": "АКС-74У"}
+	var names := {"pm": "ПМ", "ak": "АКС-74У", "sg": "ОБРЕЗ", "mosin": "МОСИНКА"}
 	main.ammo_label.text = "%s  %d / %d" % [names[weapon], clip[weapon], ammo[weapon]]

@@ -1,5 +1,5 @@
 extends CharacterBody3D
-# враги: gunner (одержимый с АКС) и crawler (ползун)
+# враги: gunner (одержимый боец в противогазе) и crawler (ползун)
 
 var main: Node3D
 var kind := "gunner"
@@ -18,7 +18,12 @@ var attack_t := 0.0
 var voice_t := 0.0
 var dead := false
 var gun_tip: Node3D
-var parts := []
+var walk_phase := 0.0
+var l_leg: Node3D
+var r_leg: Node3D
+var l_arm: Node3D
+var torso: Node3D
+var legs := []
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -41,62 +46,132 @@ func _ready() -> void:
 	add_child(cs)
 	_build_body()
 
-func _box(size: Vector3, col: Color, pos: Vector3) -> MeshInstance3D:
+func _m(col: Color, glow := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	if glow > 0:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = glow
+	return m
+
+func _part(parent: Node3D, size: Vector3, col: Color, pos: Vector3, glow := 0.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
 	mi.mesh = bm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = col
-	mi.material_override = m
+	mi.material_override = _m(col, glow)
 	mi.position = pos
-	add_child(mi)
-	parts.append(mi)
+	parent.add_child(mi)
 	return mi
 
-func _glow_box(size: Vector3, col: Color, pos: Vector3) -> void:
-	var mi := _box(size, col, pos)
-	var m: StandardMaterial3D = mi.material_override
-	m.emission_enabled = true
-	m.emission = col
-	m.emission_energy_multiplier = 1.4
+func _cyl(parent: Node3D, r: float, h: float, col: Color, pos: Vector3, rot := Vector3.ZERO, glow := 0.0) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	mi.mesh = cm
+	mi.material_override = _m(col, glow)
+	mi.position = pos
+	mi.rotation = rot
+	parent.add_child(mi)
+	return mi
 
 func _build_body() -> void:
 	if kind == "gunner":
-		var uni := Color(0.24, 0.27, 0.24)
-		_box(Vector3(0.55, 0.9, 0.32), uni, Vector3(0, 1.25, 0))
-		_box(Vector3(0.5, 0.8, 0.3), Color(0.18, 0.2, 0.18), Vector3(0, 0.4, 0))
-		_box(Vector3(0.28, 0.3, 0.28), Color(0.54, 0.5, 0.43), Vector3(0, 1.9, 0))
-		_glow_box(Vector3(0.05, 0.03, 0.02), Color(0.91, 0.89, 0.83), Vector3(-0.07, 1.93, -0.15))
-		_glow_box(Vector3(0.05, 0.03, 0.02), Color(0.91, 0.89, 0.83), Vector3(0.07, 1.93, -0.15))
-		var gun := _box(Vector3(0.08, 0.08, 0.7), Color(0.15, 0.15, 0.17), Vector3(0.2, 1.3, -0.3))
+		var uni := Color(0.23, 0.26, 0.22)      # выцветшая форма
+		var dark := Color(0.14, 0.15, 0.14)
+		var rubber := Color(0.11, 0.12, 0.12)   # резина противогаза
+		var metal := Color(0.3, 0.32, 0.3)
+
+		torso = Node3D.new()
+		torso.position.y = 1.28
+		add_child(torso)
+		_part(torso, Vector3(0.56, 0.86, 0.34), uni, Vector3(0, 0, 0))
+		_part(torso, Vector3(0.5, 0.55, 0.06), dark, Vector3(0, 0.08, -0.2))       # бронеплита
+		_part(torso, Vector3(0.58, 0.12, 0.36), Color(0.3, 0.25, 0.16), Vector3(0, -0.36, 0)) # ремень
+		_part(torso, Vector3(0.34, 0.5, 0.2), Color(0.28, 0.3, 0.24), Vector3(0, 0.05, 0.28)) # вещмешок
+		# подсумки
+		_part(torso, Vector3(0.14, 0.18, 0.08), dark, Vector3(-0.16, -0.28, -0.2))
+		_part(torso, Vector3(0.14, 0.18, 0.08), dark, Vector3(0.06, -0.28, -0.2))
+
+		# голова: противогаз
+		var head := Node3D.new()
+		head.position.y = 1.94
+		add_child(head)
+		_part(head, Vector3(0.26, 0.3, 0.26), rubber, Vector3.ZERO)
+		_part(head, Vector3(0.18, 0.14, 0.1), rubber, Vector3(0, -0.04, -0.17))     # морда маски
+		_cyl(head, 0.06, 0.08, Color(0.35, 0.36, 0.3), Vector3(0.12, -0.1, -0.14), Vector3(PI / 2, 0, 0.5)) # фильтр
+		_cyl(head, 0.055, 0.02, Color(0.85, 0.87, 0.78), Vector3(-0.07, 0.05, -0.135), Vector3(PI / 2, 0, 0), 1.8) # окуляры светятся
+		_cyl(head, 0.055, 0.02, Color(0.85, 0.87, 0.78), Vector3(0.07, 0.05, -0.135), Vector3(PI / 2, 0, 0), 1.8)
+		# каска
+		_part(head, Vector3(0.3, 0.1, 0.3), metal, Vector3(0, 0.17, 0))
+		_part(head, Vector3(0.34, 0.05, 0.34), metal, Vector3(0, 0.12, 0))
+
+		# руки
+		l_arm = Node3D.new()
+		l_arm.position = Vector3(-0.36, 1.62, 0)
+		add_child(l_arm)
+		_part(l_arm, Vector3(0.13, 0.58, 0.13), uni, Vector3(0, -0.29, 0))
+		var r_arm := Node3D.new()
+		r_arm.position = Vector3(0.36, 1.62, 0)
+		add_child(r_arm)
+		_part(r_arm, Vector3(0.13, 0.42, 0.13), uni, Vector3(0, -0.16, -0.08))
+		# оружие в правой руке
+		var gun := _part(r_arm, Vector3(0.07, 0.07, 0.66), Color(0.13, 0.13, 0.15), Vector3(-0.12, -0.3, -0.28))
+		_part(gun, Vector3(0.045, 0.16, 0.08), Color(0.5, 0.28, 0.15), Vector3(0, -0.1, 0.02)) # магазин
 		gun_tip = Node3D.new()
-		gun_tip.position = Vector3(0, 0, -0.4)
+		gun_tip.position = Vector3(0, 0, -0.38)
 		gun.add_child(gun_tip)
-		_box(Vector3(0.13, 0.6, 0.13), uni, Vector3(-0.34, 1.25, -0.1))
+
+		# ноги
+		l_leg = Node3D.new()
+		l_leg.position = Vector3(-0.15, 0.85, 0)
+		add_child(l_leg)
+		_part(l_leg, Vector3(0.2, 0.85, 0.22), Color(0.17, 0.19, 0.17), Vector3(0, -0.42, 0))
+		_part(l_leg, Vector3(0.2, 0.12, 0.3), Color(0.1, 0.1, 0.1), Vector3(0, -0.8, -0.04)) # сапог
+		r_leg = Node3D.new()
+		r_leg.position = Vector3(0.15, 0.85, 0)
+		add_child(r_leg)
+		_part(r_leg, Vector3(0.2, 0.85, 0.22), Color(0.17, 0.19, 0.17), Vector3(0, -0.42, 0))
+		_part(r_leg, Vector3(0.2, 0.12, 0.3), Color(0.1, 0.1, 0.1), Vector3(0, -0.8, -0.04))
 	else:
-		var bodycol := Color(0.16, 0.15, 0.13)
-		_box(Vector3(0.7, 0.3, 0.9), bodycol, Vector3(0, 0.25, 0))
-		_glow_box(Vector3(0.06, 0.04, 0.02), Color(0.78, 0.42, 0.29), Vector3(-0.15, 0.32, -0.46))
-		_glow_box(Vector3(0.06, 0.04, 0.02), Color(0.78, 0.42, 0.29), Vector3(0.15, 0.32, -0.46))
+		var bodycol := Color(0.15, 0.14, 0.12)
+		var b := Node3D.new()
+		b.position.y = 0.28
+		add_child(b)
+		torso = b
+		_part(b, Vector3(0.66, 0.26, 0.9), bodycol, Vector3.ZERO)
+		_part(b, Vector3(0.4, 0.2, 0.34), bodycol, Vector3(0, 0.06, -0.55))       # голова
+		_part(b, Vector3(0.5, 0.1, 0.5), Color(0.24, 0.2, 0.16), Vector3(0, 0.17, 0.1)) # горб
+		_cyl(b, 0.03, 0.5, bodycol, Vector3(0, 0.08, 0.62), Vector3(PI / 2.4, 0, 0))    # хвост
+		_part(b, Vector3(0.05, 0.03, 0.02), Color(0.82, 0.45, 0.3), Vector3(-0.11, 0.1, -0.72), 2.2)
+		_part(b, Vector3(0.05, 0.03, 0.02), Color(0.82, 0.45, 0.3), Vector3(0.11, 0.1, -0.72), 2.2)
 		for i in range(3):
 			for s in [-1, 1]:
-				_box(Vector3(0.06, 0.3, 0.06), bodycol, Vector3(s * 0.42, 0.15, -0.3 + i * 0.3))
+				var leg := Node3D.new()
+				leg.position = Vector3(s * 0.38, 0.3, -0.3 + i * 0.3)
+				add_child(leg)
+				_part(leg, Vector3(0.055, 0.34, 0.055), bodycol, Vector3(s * 0.08, -0.14, 0))
+				legs.append(leg)
 
-func take_damage(n: float) -> void:
+func take_damage(n: float, impulse := Vector3.ZERO) -> void:
 	hp -= n
 	if state == "idle":
 		state = "combat"
+	if impulse != Vector3.ZERO:
+		velocity += impulse
 	if hp <= 0 and not dead:
 		dead = true
 		main.snd("creature", global_position)
 		set_collision_layer_value(1, false)
 		var tw := create_tween()
 		if kind == "gunner":
-			tw.tween_property(self, "rotation:x", PI / 2, 0.5)
+			tw.tween_property(self, "rotation:x", PI / 2 * (1 if randf() > 0.5 else -1), 0.45)
 		else:
-			tw.tween_property(self, "scale:y", 0.1, 0.4)
-		tw.tween_interval(3.0)
+			tw.tween_property(self, "scale:y", 0.12, 0.35)
+		tw.tween_interval(4.0)
 		tw.tween_callback(queue_free)
 
 func _see_player() -> bool:
@@ -179,10 +254,29 @@ func _physics_process(delta: float) -> void:
 				pl.take_damage(8)
 				attack_t = 0.8
 
-	velocity.x = move.x * speed
-	velocity.z = move.z * speed
+	velocity.x = move.x * speed * (2.0 if lunge_t > 0 else 1.0)
+	velocity.z = move.z * speed * (2.0 if lunge_t > 0 else 1.0)
 	velocity.y -= 22 * delta
 	move_and_slide()
+
+	# анимация ходьбы
+	var moving := Vector2(velocity.x, velocity.z).length() > 0.4
+	if moving:
+		walk_phase += delta * (10.0 if kind == "gunner" else 20.0)
+	if kind == "gunner":
+		var sw := sin(walk_phase) * 0.55 if moving else 0.0
+		if l_leg:
+			l_leg.rotation.x = sw
+			r_leg.rotation.x = -sw
+			l_arm.rotation.x = -sw * 0.6
+		if torso:
+			torso.rotation.z = sin(walk_phase * 0.5) * 0.03 if moving else 0.0
+			torso.rotation.x = 0.06	# лёгкая сутулость
+	else:
+		for i in range(legs.size()):
+			legs[i].rotation.x = sin(walk_phase + i * 1.7) * 0.7 if moving else 0.0
+		if torso:
+			torso.position.y = 0.28 + (sin(walk_phase * 2) * 0.02 if moving else 0.0)
 
 func _shoot(pl) -> void:
 	main.snd("eshot", global_position)
@@ -205,6 +299,8 @@ func _shoot(pl) -> void:
 		end = hit.position
 		if hit.collider == pl:
 			pl.take_damage(8)
+		elif hit.collider is RigidBody3D:
+			hit.collider.apply_central_impulse((end - from).normalized() * 2.5)
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.012, 0.012, from.distance_to(end))
